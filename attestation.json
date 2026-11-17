@@ -1,0 +1,9 @@
+{
+  "pluginId": "neodex.nba",
+  "repo": "NDesumeur/neodex-plugin-nba-phone",
+  "version": "1.0.0",
+  "sha256": "4b23e73059a74ac146042effe2dbf83a72d22d44827907f41a6cfc8fa6a52cc6",
+  "approvedAt": "2026-11-17T18:40:03.404Z",
+  "neobase": ">=4.0.0",
+  "signature": "vo+c+S/+8tcPls/4YaNWZtDTMjG4ZaG00xvG0/PJCKZ4+4XzbDjX93R88JiZKEAmV/yURt2vSifp98u9RiLFAg=="
+}
