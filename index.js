@@ -1,0 +1,427 @@
+// NBA : ton appli d'origine (HTML et code inchangés), livrée en plugin.
+// Ses données sont dans le dossier du plugin, que NeoDex sauvegarde (synchro cloud et sauvegardes) ; à la première ouverture elle reprend ce que tu avais dans NeoDex.
+// Elle tourne dans le bac à sable de NeoDex, avec ses outils d'interface (ctx.host) et seulement les autorisations de son plugin.json.
+const HTML = "<div class=\"appWrap wide\">\n      <div class=\"agHead\"><span class=\"label\">NBA</span><span id=\"nbaDay\"></span>\n        <div class=\"agNav\" id=\"nbaDayNav\"><button class=\"btn px\" id=\"nbaPrev\" title=\"Nuit précédente\">&lt;</button><button class=\"btn px\" id=\"nbaToday\">CETTE NUIT</button><button class=\"btn px\" id=\"nbaNext\" title=\"Nuit suivante\">&gt;</button></div>\n        <div class=\"agNav\" id=\"nbaTabs\"><button class=\"btn px\" data-v=\"games\">MATCHS</button><button class=\"btn px\" data-v=\"standings\">CLASSEMENT</button><button class=\"btn px\" data-v=\"playoffs\">PLAYOFFS</button></div></div>\n      <label style=\"display:flex;gap:8px;align-items:center;margin:6px 0 10px;color:var(--shell);font-size:14px\"><input type=\"checkbox\" id=\"nbaCal\"> Ajouter les matchs de mes équipes favorites (★) à mon emploi du temps, mis à jour automatiquement</label>\n      <div id=\"nbaGames\" class=\"nbaGrid\"></div>\n      <div id=\"nbaStandings\" class=\"stCols\"></div>\n      <div id=\"nbaPlayoffs\" style=\"display:none\"></div>\n      <div id=\"nbaDetail\" style=\"display:none\"></div>\n      <div class=\"hint\">Données ESPN, heures de Paris. Clique sur un match pour sa feuille de match et ses stats avancées, sur un joueur pour ses stats. L'étoile d'une équipe en fait ton équipe : ses matchs passent en premier.</div>\n    </div>";
+/*CSS-MOVED*/ const CSS = `#nbaDay{font-size:19px;color:#fff}
+.nbaGame .nbaTeam{grid-template-columns:clamp(36px,3vw,54px) 1fr auto clamp(56px,4.6vw,84px)}
+.nbaGame .nbaTeam img{width:clamp(36px,3vw,54px);height:clamp(36px,3vw,54px)}
+.nbaGame .nbaTeam .tn{font-size:clamp(17px,1.25vw,22px)}.nbaGame .nbaTeam small{font-size:clamp(12px,.85vw,15px)}
+.nbaGame .hint{font-size:clamp(13px,.9vw,15px)}
+.nbaBr{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:clamp(6px,.8vw,16px)}
+.nbaBr>div{display:flex;flex-direction:column;gap:8px;min-width:0}.nbaBr>div>div{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:10px;min-height:clamp(360px,calc(100vh - 360px),700px)}
+.nbaBr h4{margin:0;font:clamp(9px,.65vw,11px) var(--title);letter-spacing:1px;line-height:1.6;min-height:3.2em;color:var(--muted);text-align:center}
+.nbaMu{display:flex;flex-direction:column;gap:2px;padding:6px 8px;background:rgba(0,0,0,.25);box-shadow:0 0 0 2px var(--line);font-size:clamp(13px,.95vw,16px);color:#fff;min-width:0}
+.nbaMu.fin{box-shadow:0 0 0 2px var(--magenta)}
+.nbaMu>div{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden}
+.nbaMu img{width:clamp(18px,1.4vw,26px);height:clamp(18px,1.4vw,26px);object-fit:contain;flex:none}
+.nbaMu i{font-style:normal;color:var(--muted);width:1.2em;text-align:right;flex:none}.nbaMu .pi{font-size:10px;color:#ffd07a}.nbaMu i.p{color:#ffd07a}@media (max-width:1300px){.nbaMu .pi{display:none}}.nbaMu .fv{color:#ffd07a}
+.nbaVs{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center;text-align:center}
+.nbaVs img{width:clamp(120px,10vw,180px);aspect-ratio:4/3;object-fit:cover;object-position:top;background:rgba(0,0,0,.2)}
+.nbaVs .vs{font:clamp(18px,1.6vw,28px) var(--title);color:var(--pink)}
+.nbaVid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(220px,17vw,300px),1fr));gap:14px;margin-top:8px}
+.nbaVid button{all:unset;cursor:var(--cp,pointer);display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--lilac)}
+.nbaVid button:hover{color:#fff}.nbaVid img{width:100%;aspect-ratio:16/9;object-fit:cover;background:rgba(0,0,0,.3)}
+.nbaPlBtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#nbaDayNav{margin-left:auto}
+#nbaTabs{margin-left:12px}
+#nbaTabs .btn.on{--c:var(--magenta);color:#fff}
+.nbaGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(340px,25vw,480px),1fr));gap:clamp(16px,1.4vw,26px)}
+.nbaGame{gap:8px}
+.nbaGame.fav{--c:var(--magenta)}
+.nbaScore{font:clamp(22px,1.9vw,34px) var(--title);color:#fff;text-align:right}
+.nbaTeam.lost .tn{color:var(--muted)}
+.nbaTeam.lost .nbaScore{color:var(--muted)}
+.nbaStatus{font:clamp(10px,.7vw,12px)/1.5 var(--title);letter-spacing:1px;color:var(--lilac);padding-top:6px;border-top:1px solid rgba(255,255,255,.06)}
+.nbaStatus.live{color:#fff}
+.nbaStatus.live::before{content:"";display:inline-block;width:8px;height:8px;margin-right:8px;background:var(--red);animation:blink 1s steps(2) infinite}
+.nbaStar{all:unset;cursor:var(--cp,pointer);color:var(--muted);font-size:16px;padding:0 4px}
+.nbaStar:hover,.nbaStar.on{color:#ffd07a}
+.nbaRow{display:grid;grid-template-columns:24px 24px 1fr 56px 52px 44px 40px;gap:8px;align-items:center;font-size:14px;color:var(--lilac);padding:4px 0}
+.nbaRow img{width:22px;height:22px;object-fit:contain}
+.nbaRow .tn{color:#fff;display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden}
+.nbaGame.click{cursor:var(--cp,pointer)}
+.nbaGame.click:hover{--c:var(--violet)}
+.nbaPl{all:unset;cursor:var(--cp,pointer);color:#fff;text-decoration:underline dotted rgba(255,255,255,.35)}
+.nbaPl:hover{color:var(--pink)}
+.nbaTn{cursor:var(--cp,pointer)}.nbaTn:hover{color:var(--pink)}
+.nbaHead{display:flex;align-items:center;gap:14px}.nbaHead img{width:56px;height:56px;object-fit:contain}
+.nbaSch{display:grid;grid-template-columns:110px 28px 1fr auto;gap:10px;align-items:center;font-size:14px;color:var(--lilac);padding:5px 0;border-top:1px solid rgba(255,255,255,.05);cursor:var(--cp,pointer)}
+.nbaSch:hover{color:#fff}.nbaSch img{width:24px;height:24px;object-fit:contain}.nbaSch b{font:11px var(--title)}.nbaSch b.w{color:#7fe08a}.nbaSch b.l{color:#ff7a8a}
+.nbaPl.st{font-weight:600}
+#nbaDetail{display:flex;flex-direction:column;gap:20px;align-items:flex-start}
+#nbaDetail>.sysCard{align-self:stretch;overflow-x:auto}
+.nbaTable{border-collapse:collapse;font-size:14px;color:var(--lilac);width:100%}
+.nbaTable th{font:clamp(9px,.65vw,11px) var(--title);letter-spacing:1px;color:var(--muted);text-align:right;padding:6px 8px;white-space:nowrap}
+.nbaTable td{text-align:right;padding:5px 8px;border-top:1px solid rgba(255,255,255,.06);white-space:nowrap}
+.nbaTable th:first-child,.nbaTable td:first-child{text-align:left}
+.nbaTable tr:hover td{background:rgba(var(--pkr),.06)}
+.nbaCmp{display:grid;grid-template-columns:clamp(70px,6vw,110px) 1fr clamp(70px,6vw,110px);gap:4px 10px;align-items:center;font-size:clamp(14px,.95vw,17px);color:var(--lilac)}
+.nbaCmp b{color:#fff;font-weight:600}
+.nbaCmp b:last-of-type{text-align:right}
+.nbaCmp span{text-align:center}
+.nbaBar{grid-column:1/-1;display:flex;gap:2px;height:6px}
+.nbaBar i{background:var(--line2)}
+.nbaBar i.win{background:var(--magenta)}
+.nbaBio{flex-direction:row!important;gap:20px;align-items:center}
+.nbaBio img{width:150px;height:110px;object-fit:cover;object-position:top;background:rgba(0,0,0,.2)}
+.nbaName{font:clamp(16px,1.3vw,22px) var(--title);color:#fff;margin-bottom:6px}
+.nbaFacts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin-top:10px;font-size:14px;color:var(--muted)}
+.nbaFacts b{color:#fff;font-weight:500}
+.nbaRow.head{font:clamp(9px,.65vw,11px) var(--title);letter-spacing:1px;color:var(--muted)}
+.nbaRow.fav{background:rgba(var(--mgr),.14)}
+.nbaRow.cut{border-top:2px dashed var(--line2);margin-top:4px;padding-top:8px}
+/*PHONE*/
+/* téléphone : les moments forts sur deux colonnes, pour ne pas faire défiler douze grandes images */
+@media (max-width:600px){
+.nbaVid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.nbaVid button{font-size:12px;line-height:1.3}
+}
+/*/PHONE*/
+`;  // le style de ce plugin (il utilise les variables du thème de NeoDex)
+export default async function (ctx) {
+  const view = ctx.view;
+  if (!ctx.host) { view.textContent = "Ce plugin doit être approuvé par NeoDex pour s'ouvrir."; return; }
+  const { el, toast, sfx, ask, newTab, pixIcon, PIX, WX } = ctx.host;
+  const folder = ctx.folder, legacy = ctx.legacy || {};
+  ctx.host.addStyle(CSS);
+  view.innerHTML = HTML;
+  const $ = id => id === "nbaApp" ? view : view.querySelector('#' + id);  // les identifiants de ta vue, sans toucher à ceux du reste de NeoDex
+  const doc = async n => { try { return await folder.read(n); } catch { return null; } };
+  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  let prefs = await doc('prefs');
+  if (prefs == null) {  // première ouverture : tu retrouves tes réglages d'avant
+    prefs = {}; const old = legacy.settings ? await legacy.settings().catch(() => ({})) : {};
+    for (const k of ["nbaTeam"]) if (old[k] !== undefined && old[k] !== '' && !(Array.isArray(old[k]) && !old[k].length)) prefs[k] = old[k];
+    if (Object.keys(prefs).length) await folder.write('prefs', prefs);
+  }
+  const neo = { win: a => ctx.host.win?.(a), getSettings: async () => prefs, setSettings: async s => { Object.assign(prefs, s); await folder.write('prefs', prefs); return prefs; } };
+  const favs = () => [...new Set([...(prefs.nbaTeams || []), ...(prefs.nbaTeam ? [prefs.nbaTeam] : [])])], isFav = a => favs().includes(a);  // plusieurs équipes favorites (l'ancien réglage « nbaTeam » en fait partie)
+  // ---- ton code d'origine ----
+  /* ---------- NBA: a game's page (score by quarter, team stats, advanced stats, box score) and a player's page (bio, season and career
+     averages, last games), from ESPN's public JSON like the rest of the app. A click on a game opens it, a click on a player opens him. ---------- */
+  let nbaBack = null;  // what "Retour" goes back to
+  const nbaN = v => parseFloat(v) || 0, nbaPct = v => (v * 100).toFixed(1) + ' %';
+  function nbaDetail(nodes, back) {
+    nbaBack = back;
+    const box = $('nbaDetail'), b = el('button', 'btn px', '‹ RETOUR');
+    b.onclick = () => { const f = nbaBack; nbaBack = null; f ? f() : nbaClose(); };
+    box.replaceChildren(b, ...nodes);
+    $('nbaGames').style.display = $('nbaStandings').style.display = 'none'; box.style.display = ''; $('nbaDayNav').style.visibility = 'hidden';
+    view.querySelector('#nbaApp .appWrap')?.scrollTo?.(0, 0); $('nbaApp').scrollTop = 0;
+  }
+  function nbaClose() { $('nbaDetail').style.display = 'none'; nbaRender(); }
+  const nbaLoading = what => nbaDetail([el('div', 'hint', 'Chargement ' + what + '…')]);
+  const nbaTable = (head, rows, cls = '') => {
+    const t = el('table', 'nbaTable ' + cls), h = el('tr');
+    h.append(...head.map(x => el('th', '', x))); t.append(h);
+    for (const r of rows) { const tr = el('tr'); for (const c of r) { const td = el('td'); c instanceof Node ? td.append(c) : td.textContent = c ?? ''; tr.append(td); } t.append(tr); }
+    return t;
+  };
+  // a team's advanced numbers from its box score: shooting efficiency, possessions, points per 100 possessions
+  function nbaAdvanced(t, opp) {
+    const g = (o, k) => nbaN(o.statistics.find(s => s.name === k)?.displayValue), pair = (o, k) => (o.statistics.find(s => s.name === k)?.displayValue || '0-0').split('-').map(nbaN);
+    const [fgm, fga] = pair(t, 'fieldGoalsMade-fieldGoalsAttempted'), [tpm] = pair(t, 'threePointFieldGoalsMade-threePointFieldGoalsAttempted'), [, fta] = pair(t, 'freeThrowsMade-freeThrowsAttempted');
+    const pts = nbaN(t.pts), tov = g(t, 'totalTurnovers') || g(t, 'turnovers'), orb = g(t, 'offensiveRebounds'), ast = g(t, 'assists');
+    const poss = fga - orb + tov + .44 * fta, [, ofga] = pair(opp, 'fieldGoalsMade-fieldGoalsAttempted'), [, ofta] = pair(opp, 'freeThrowsMade-freeThrowsAttempted');
+    const oposs = ofga - g(opp, 'offensiveRebounds') + (g(opp, 'totalTurnovers') || g(opp, 'turnovers')) + .44 * ofta, pace = (poss + oposs) / 2;
+    return {efg: fga ? (fgm + .5 * tpm) / fga : 0, ts: fga + fta ? pts / (2 * (fga + .44 * fta)) : 0, pace, ortg: pace ? pts / pace * 100 : 0, astTo: tov ? ast / tov : ast, astPct: fgm ? ast / fgm : 0, tovPct: poss ? tov / poss : 0};
+  }
+  console.assert(Math.abs(nbaAdvanced({pts: 100, statistics: [{name: 'fieldGoalsMade-fieldGoalsAttempted', displayValue: '40-80'}, {name: 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', displayValue: '10-30'}, {name: 'freeThrowsMade-freeThrowsAttempted', displayValue: '10-10'}]},
+    {statistics: []}).efg - .5625) < 1e-9, 'nbaAdvanced');
+
+  const nbaCmpRow = (at, name, bt, low) => {
+    const av = nbaN(at), bv = nbaN(bt), r = el('div', 'nbaCmp'), bar = el('div', 'nbaBar'), l = el('i'), rr = el('i');
+    const share = av + bv ? av / (av + bv) * 100 : 50; l.style.width = share + '%'; rr.style.width = 100 - share + '%';
+    (av === bv ? null : (low ? av < bv : av > bv) ? l : rr)?.classList.add('win');
+    bar.append(l, rr); r.append(el('b', '', at), el('span', '', name), el('b', '', bt), bar); return r;
+  };
+  // les moments forts d'un match : les vidéos que donne ESPN, chacune ouvre sa page dans un onglet
+  const nbaVideos = list => {
+    const vids = (list || []).map(v => ({v, href: v.links?.web?.href || v.links?.source?.href})).filter(x => x.href).slice(0, 12); if (!vids.length) return null;
+    const card = el('div', 'sysCard px'), g = el('div', 'nbaVid'); card.append(el('span', 'label', 'Moments forts'), g);
+    for (const {v, href} of vids) {
+      const bt = el('button'), im = el('img'), th = v.thumbnail || v.images?.[0]?.url; if (th) im.src = th; else im.style.visibility = 'hidden'; im.onerror = () => im.style.visibility = 'hidden'; im.alt = '';
+      bt.append(im, el('span', '', '▶ ' + (v.headline || v.title || 'Vidéo') + (v.duration ? ' · ' + Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : ''))); bt.title = 'Ouvrir la vidéo dans un onglet'; bt.dataset.href = href;
+      bt.onclick = () => newTab(href); g.append(bt);
+    }
+    return card;
+  };
+  async function nbaGame(id) {
+    nbaLoading('du match');
+    let s; try { s = await nbaFetch('site/v2/sports/basketball/nba/summary?event=' + id); } catch (e) { return nbaDetail([el('div', 'hint', 'Match indisponible : ' + e.message)]); }
+    const comp = s.header.competitions[0], st = comp.status.type, teams = [...comp.competitors].sort((a, b) => a.homeAway === 'away' ? -1 : 1);
+    const bt = abbr => s.boxscore?.teams?.find(t => t.team.abbreviation === abbr), nodes = [];
+    // the score and the quarters
+    const top = el('div', 'sysCard px nbaHead');
+    for (const t of teams) {
+      const r = el('div', 'nbaTeam' + (st.state === 'post' && !t.winner ? ' lost' : '')), logo = el('img'), n = el('div', 'tn');
+      logo.src = t.team.logos?.[0]?.href || t.team.logo || ''; logo.onerror = () => logo.style.visibility = 'hidden';
+      n.append(t.team.displayName, el('small', '', (t.homeAway === 'home' ? 'domicile' : 'extérieur') + (t.record?.[0]?.summary ? ' · ' + t.record[0].summary : '')));
+      r.append(logo, n, el('span'), el('span', 'nbaScore', st.state === 'pre' ? '' : t.score)); top.append(r);
+    }
+    top.append(el('div', 'nbaStatus' + (st.state === 'in' ? ' live' : ''), st.state === 'pre' ? 'à ' + new Date(comp.date).toLocaleString('fr-FR', {weekday: 'long', hour: '2-digit', minute: '2-digit'}) : (st.state === 'in' ? 'EN DIRECT · ' : '') + nbaFr(st.detail || st.shortDetail)));
+    const q = Math.max(0, ...teams.map(t => t.linescores?.length || 0));
+    if (q) top.append(nbaTable(['', ...Array.from({length: q}, (_, i) => i < 4 ? i + 1 + 'e QT' : 'Prol. ' + (i - 3)), 'Total'], teams.map(t => [t.team.abbreviation, ...Array.from({length: q}, (_, i) => t.linescores?.[i]?.displayValue ?? ''), t.score])));
+    const v = s.gameInfo?.venue; if (v) top.append(el('div', 'hint', v.fullName + (v.address?.city ? ', ' + v.address.city : '') + (s.gameInfo.attendance ? ' · ' + s.gameInfo.attendance.toLocaleString('fr-FR') + ' spectateurs' : '')));
+    nodes.push(top);
+    const vid = nbaVideos(s.videos); if (vid) nodes.push(vid);
+    const [ta, tb] = teams.map(t => bt(t.team.abbreviation));
+    if (ta && tb) {
+      ta.pts = teams[0].score; tb.pts = teams[1].score;
+      // team stats side by side, with a bar showing who did better
+      const LAB = {fieldGoalPct: 'Tirs %', threePointFieldGoalPct: '3 pts %', freeThrowPct: 'Lancers %', totalRebounds: 'Rebonds', offensiveRebounds: 'Rebonds off.', assists: 'Passes déc.', steals: 'Interceptions',
+        blocks: 'Contres', totalTurnovers: 'Balles perdues', pointsInPaint: 'Points dans la raquette', fastBreakPoints: 'Contre-attaque', turnoverPoints: 'Points sur pertes adverses', largestLead: 'Plus gros écart', fouls: 'Fautes'};
+      const LOW = ['totalTurnovers', 'fouls'];
+      const card = el('div', 'sysCard px'); card.append(el('span', 'label', 'Stats des équipes · ' + teams.map(t => t.team.abbreviation).join(' / ')));
+      for (const [k, name] of Object.entries(LAB)) {
+        const a = ta.statistics.find(x => x.name === k), b = tb.statistics.find(x => x.name === k); if (!a || !b) continue;
+        card.append(nbaCmpRow(a.displayValue, name, b.displayValue, LOW.includes(k)));
+      }
+      nodes.push(card);
+      // advanced stats, computed from the box score
+      const A = nbaAdvanced(ta, tb), B = nbaAdvanced(tb, ta), adv = el('div', 'sysCard px');
+      adv.append(el('span', 'label', 'Stats avancées'), nbaTable(['', teams[0].team.abbreviation, teams[1].team.abbreviation], [
+        ['Tir effectif (eFG %)', nbaPct(A.efg), nbaPct(B.efg)], ['Tir réel (TS %)', nbaPct(A.ts), nbaPct(B.ts)], ['Points / 100 possessions', A.ortg.toFixed(1), B.ortg.toFixed(1)],
+        ['Rythme (possessions)', A.pace.toFixed(1), B.pace.toFixed(1)], ['Paniers sur passe', nbaPct(A.astPct), nbaPct(B.astPct)], ['Passes / balle perdue', A.astTo.toFixed(2), B.astTo.toFixed(2)], ['Pertes / possession', nbaPct(A.tovPct), nbaPct(B.tovPct)],
+      ], 'adv'), el('div', 'hint', 'eFG % compte un panier à 3 points pour 1,5 · TS % ajoute les lancers francs · le rythme est le nombre de possessions estimé.'));
+      nodes.push(adv);
+    }
+    // the box score of each team: a click on a player opens his page
+    for (const p of s.boxscore?.players || []) {
+      const blk = p.statistics?.[0]; if (!blk?.athletes?.length) continue;
+      const card = el('div', 'sysCard px'), i = k => blk.names.indexOf(k);
+      card.append(el('span', 'label', 'Feuille de match · ' + p.team.displayName));
+      const head = ['Joueur', 'MIN', 'PTS', 'REB', 'PD', 'INT', 'CTR', 'TIRS', '3 PTS', 'LF', 'BP', '+/-', 'TS %'];
+      const rows = blk.athletes.map(a => {
+        const x = a.stats || [], n = el('button', 'nbaPl' + (a.starter ? ' st' : ''), a.athlete.shortName || a.athlete.displayName);
+        n.title = 'Voir les stats de ' + a.athlete.displayName; n.onclick = () => nbaPlayer(a.athlete.id, () => nbaGame(id));
+        if (a.didNotPlay || !x.length) return [n, a.reason || 'n’a pas joué'];
+        const [fgm, fga] = (x[i('FG')] || '0-0').split('-').map(nbaN), [, fta] = (x[i('FT')] || '0-0').split('-').map(nbaN), pts = nbaN(x[i('PTS')]);
+        return [n, x[i('MIN')], x[i('PTS')], x[i('REB')], x[i('AST')], x[i('STL')], x[i('BLK')], x[i('FG')], x[i('3PT')], x[i('FT')], x[i('TO')], x[i('+/-')], fga + fta ? nbaPct(pts / (2 * (fga + .44 * fta))) : '-'];
+      });
+      card.append(nbaTable(head, rows, 'box'), el('div', 'hint', 'En gras : les titulaires. Clique sur un joueur pour ses stats de la saison.'));
+      nodes.push(card);
+    }
+    if (nodes.length === 1) nodes.push(el('div', 'hint', 'La feuille de match arrive au coup d’envoi.'));
+    nbaDetail(nodes, null);
+  }
+
+  async function nbaPlayer(id, back) {
+    nbaLoading('du joueur');
+    const base = 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/' + id, get = u => fetch(u).then(r => { if (!r.ok) throw new Error('ESPN ' + r.status); return r.json(); });
+    let a, o; try { [a, o] = await Promise.all([get(base).then(j => j.athlete), get(base + '/overview').catch(() => ({}))]); } catch (e) { return nbaDetail([el('div', 'hint', 'Joueur indisponible : ' + e.message)], back); }
+    const nodes = [], top = el('div', 'sysCard px nbaBio'), pic = el('img');
+    pic.src = a.headshot?.href || ''; pic.onerror = () => pic.style.display = 'none';
+    const info = el('div');
+    info.append(el('div', 'nbaName', a.displayName), el('div', 'hint', [a.team?.displayName, a.position?.displayName && ({Forward: 'Ailier', Guard: 'Arrière', Center: 'Pivot', 'Point Guard': 'Meneur', 'Shooting Guard': 'Arrière', 'Small Forward': 'Ailier', 'Power Forward': 'Ailier fort'}[a.position.displayName] || a.position.displayName), a.jersey && '#' + a.jersey].filter(Boolean).join(' · ')));
+    const cm = s => { const m = /(\d+)' (\d+)"/.exec(s || ''); return m ? Math.round((+m[1] * 12 + +m[2]) * 2.54) + ' cm' : ''; }, kg = s => { const m = /(\d+)/.exec(s || ''); return m ? Math.round(+m[1] * .4536) + ' kg' : ''; };
+    const facts = [['Âge', a.age ? a.age + ' ans' : ''], ['Taille', cm(a.displayHeight)], ['Poids', kg(a.displayWeight)], ['Né à', a.displayBirthPlace], ['Draft', a.displayDraft], ['Université', a.college?.name], ['Saison en NBA', (a.displayExperience || '').replace(/(\d+)\w* Season/, '$1e')]].filter(f => f[1]);
+    const dl = el('div', 'nbaFacts'); for (const [k, x] of facts) dl.append(el('span', '', k), el('b', '', x)); info.append(dl);
+    const btns = el('div', 'nbaPlBtns'), me = {a, o}, pk = el('button', 'btn px', nbaPick?.a.id === a.id ? '⚖ CHOISI POUR COMPARER' : '⚖ CHOISIR POUR COMPARER');
+    pk.onclick = () => { nbaPick = me; pk.textContent = '⚖ CHOISI POUR COMPARER'; toast('Ouvre un autre joueur pour le comparer à ' + a.displayName); };
+    btns.append(pk);
+    if (nbaPick && nbaPick.a.id !== a.id) { const p0 = nbaPick, c = el('button', 'btn px', '⚖ COMPARER AVEC ' + (p0.a.shortName || p0.a.displayName).toUpperCase()); c.onclick = () => nbaCompare(p0, me, () => nbaPlayer(id, back)); btns.append(c); }
+    info.append(btns); top.append(pic, info); nodes.push(top);
+    const st = o.statistics;
+    if (st?.splits?.length) {
+      const FR = {GP: 'MJ', MIN: 'MIN', 'FG%': 'TIRS %', '3P%': '3 PTS %', 'FT%': 'LF %', REB: 'REB', AST: 'PD', BLK: 'CTR', STL: 'INT', PF: 'FTES', TO: 'BP', PTS: 'PTS'};
+      const card = el('div', 'sysCard px'); card.append(el('span', 'label', 'Moyennes par match'));
+      card.append(nbaTable(['', ...st.labels.map(l => FR[l] || l)], st.splits.map(sp => [{'Regular Season': 'Saison', Career: 'Carrière', Postseason: 'Playoffs'}[sp.displayName] || sp.displayName, ...sp.stats])), el('div', 'hint', 'MJ : matchs joués · PD : passes décisives · INT : interceptions · CTR : contres · BP : balles perdues · LF : lancers francs.'));
+      nodes.push(card);
+    }
+    const gl = o.gameLog, blk = gl?.statistics?.[0];
+    if (blk?.events?.length) {
+      const card = el('div', 'sysCard px'); card.append(el('span', 'label', 'Derniers matchs'));
+      const pick = ['points', 'totalRebounds', 'assists', 'minutes', 'fieldGoalPct', 'threePointPct'], idx = pick.map(k => blk.names.indexOf(k));
+      card.append(nbaTable(['Match', 'PTS', 'REB', 'PD', 'MIN', 'TIRS %', '3 PTS %'], blk.events.map(ev => {
+        const e = gl.events?.[ev.eventId] || {}, g = el('button', 'nbaPl', (e.gameDate ? new Date(e.gameDate).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'}) + ' ' : '') + (e.atVs || '') + ' ' + (e.opponent?.abbreviation || '') + (e.gameResult ? ' · ' + ({W: 'V', L: 'D'}[e.gameResult] || e.gameResult) + ' ' + (e.score || '') : ''));
+        g.title = 'Voir ce match'; g.onclick = () => nbaGame(ev.eventId);
+        return [g, ...idx.map(i => ev.stats[i] ?? '')];
+      })));
+      nodes.push(card);
+    }
+    nbaDetail(nodes, back);
+  }
+  let nbaPick = null;  // le joueur choisi pour une comparaison
+  // deux joueurs côte à côte : leurs moyennes de la saison, la barre montre qui fait mieux (moins de balles perdues et de fautes, c'est mieux)
+  function nbaCompare(A, B, back) {
+    const top = el('div', 'sysCard px nbaVs'), side = P => { const d = el('div'), im = el('img'); if (P.a.headshot?.href) im.src = P.a.headshot.href; else im.style.visibility = 'hidden'; im.onerror = () => im.style.visibility = 'hidden'; d.append(im, el('div', 'nbaName', P.a.displayName), el('div', 'hint', P.a.team?.displayName || '')); return d; };
+    top.append(side(A), el('div', 'vs', 'VS'), side(B));
+    const split = P => P.o?.statistics?.splits?.find(s => s.displayName === 'Regular Season') || P.o?.statistics?.splits?.[0], sa = split(A), sb = split(B), card = el('div', 'sysCard px');
+    const FR = {GP: 'Matchs joués', MIN: 'Minutes', 'FG%': 'Tirs %', '3P%': '3 pts %', 'FT%': 'Lancers %', REB: 'Rebonds', AST: 'Passes déc.', BLK: 'Contres', STL: 'Interceptions', PF: 'Fautes', TO: 'Balles perdues', PTS: 'Points'};
+    card.append(el('span', 'label', 'Moyennes par match · ' + (A.a.shortName || A.a.displayName) + ' / ' + (B.a.shortName || B.a.displayName)));
+    if (sa && sb) { const la = A.o.statistics.labels, lb = B.o.statistics.labels; for (const [i, l] of la.entries()) { const j = lb.indexOf(l); if (j >= 0) card.append(nbaCmpRow(sa.stats[i], FR[l] || l, sb.stats[j], l === 'TO' || l === 'PF')); } }
+    else card.append(el('div', 'hint', 'Pas encore de stats cette saison pour l’un des deux.'));
+    nbaDetail([top, card], back);
+  }
+  // le tableau des playoffs : les 8 premiers de chaque conférence, 1 contre 8, 4 contre 5, 3 contre 6, 2 contre 7 ; les places 7 et 8 se jouent au play-in
+  const nbaPairs = seeds => [[0, 7], [3, 4], [2, 5], [1, 6]].map(([x, y]) => [seeds[x], seeds[y]]);
+  console.assert(JSON.stringify(nbaPairs([1, 2, 3, 4, 5, 6, 7, 8])) === '[[1,8],[4,5],[3,6],[2,7]]', 'nbaPairs');
+  function nbaPlayoffs(st) {
+    const stat = (en, k) => en.stats.find(s => s.name === k)?.displayValue ?? '';
+    const conf = re => { const c = (st.children || []).find(c => re.test(c.name)); return c ? [...c.standings.entries].sort((a, b) => +stat(a, 'playoffSeed') - +stat(b, 'playoffSeed')).slice(0, 8).map((en, i) => ({en, seed: i + 1})) : []; };
+    const W = conf(/West/), E = conf(/East/), team = x => { const d = el('div'); if (!x) { d.append(el('i', '', ''), el('span', '', '?')); return d; }
+      const im = el('img'), src = x.en.team.logos?.[0]?.href; if (src) im.src = src; else im.style.visibility = 'hidden'; im.onerror = () => im.style.visibility = 'hidden';
+      const n = el('span', isFav(x.en.team.abbreviation) ? 'fv' : '', x.en.team.abbreviation || x.en.team.shortDisplayName); d.append(el('i', x.seed >= 7 ? 'p' : '', x.seed), im, n); if (x.seed >= 7) d.append(el('span', 'pi', 'play-in')); d.title = x.en.team.displayName + ' · ' + stat(x.en, 'wins') + '-' + stat(x.en, 'losses'); return d; };
+    const mu = (a, b2, cls = '') => { const m = el('div', 'nbaMu ' + cls); m.append(team(a), team(b2)); return m; };
+    const col = (title, boxes) => { const c = el('div'), w = el('div'); w.append(...boxes); c.append(el('h4', '', title), w); return c; };
+    const ph = n => Array.from({length: n}, () => mu(null, null));
+    const br = el('div', 'nbaBr');
+    br.append(col('OUEST', nbaPairs(W).map(([a, b2]) => mu(a, b2))), col('DEMI-FINALES', ph(2)), col('FINALE OUEST', ph(1)), col('FINALE NBA', [mu(null, null, 'fin')]), col('FINALE EST', ph(1)), col('DEMI-FINALES', ph(2)), col('EST', nbaPairs(E).map(([a, b2]) => mu(a, b2))));
+    const card = el('div', 'sysCard px'); card.append(el('span', 'label', 'Tableau des playoffs · si la saison s’arrêtait ce soir'), br, el('div', 'hint', 'D’après le classement du moment. Les places 7 et 8 (en jaune) se jouent au play-in (7 à 10). Survole une équipe pour son bilan.'));
+    $('nbaPlayoffs').replaceChildren(card);
+  }
+  /* ---------- NBA app: scores of a night and standings, from ESPN's public JSON (no account); the favorite team (settings.nbaTeam) comes first ---------- */
+  const NBA = 'https://site.api.espn.com/apis/', nbaFetch = p => fetch(NBA + p).then(r => { if (!r.ok) throw new Error('ESPN ' + r.status); return r.json(); });
+  let nbaDate = null, nbaView = 'games', nbaTimer = null;
+  // the night to show by default: US date in New York, the previous one until noon there (games end in the French morning)
+  const nbaDefault = () => { const ny = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/New_York'})); if (ny.getHours() < 12) ny.setDate(ny.getDate() - 1); return ymd(ny); };
+  const nbaFr = s => s.replace(/End of (\d)\w+/, 'Fin du $1e QT').replace(/(\d)(st|nd|rd|th)( Quarter)?/, '$1e QT').replace(/Halftime/, 'Mi-temps').replace(/\bOT\b/, 'prol.').replace(/Final/, 'Terminé');
+  console.assert(nbaFr('7:32 - 3rd') === '7:32 - 3e QT' && nbaFr('End of 1st') === 'Fin du 1e QT' && nbaFr('Final/OT') === 'Terminé/prol.', 'nbaFr');
+  const nbaStar = abbr => {
+    const b = el('button', 'nbaStar' + (isFav(abbr) ? ' on' : ''), isFav(abbr) ? '★' : '☆');
+    b.title = isFav(abbr) ? "Ce n'est plus une de mes équipes" : 'Une de mes équipes : ses matchs passent en premier et vont dans mon emploi du temps';
+    b.onclick = async e => { e.stopPropagation(); const set = new Set(favs()); set.has(abbr) ? set.delete(abbr) : set.add(abbr); prefs = await neo.setSettings({nbaTeams: [...set], nbaTeam: ''}); nbaRender(); nbaCalendar(); };
+    return b;
+  };
+  const nbaShow = v => { for (const [id, k] of [['nbaGames', 'games'], ['nbaStandings', 'standings'], ['nbaPlayoffs', 'playoffs']]) $(id).style.display = v === k ? '' : 'none'; };
+  async function nbaRender() {
+    clearTimeout(nbaTimer);
+    if (!view.classList.contains('on')) return;
+    nbaDate ??= nbaDefault();
+    const d = new Date(nbaDate + 'T12:00'), next = addDays(d, 1);
+    $('nbaDay').textContent = 'Nuit du ' + d.toLocaleDateString('fr-FR', {weekday: 'long', day: 'numeric'}) + ' au ' + next.toLocaleDateString('fr-FR', {weekday: 'long', day: 'numeric', month: 'long'});
+    view.querySelectorAll('#nbaTabs .btn').forEach(b => b.classList.toggle('on', b.dataset.v === nbaView));
+    $('nbaDayNav').style.visibility = nbaView === 'games' ? '' : 'hidden';
+    if (nbaBack !== null || $('nbaDetail').style.display !== 'none') return;  // a game or a player is open: the live refresh waits
+    nbaShow(nbaView);
+    try {
+      if (nbaView === 'standings') return nbaStandings(await nbaFetch('v2/sports/basketball/nba/standings'));
+      if (nbaView === 'playoffs') return nbaPlayoffs(await nbaFetch('v2/sports/basketball/nba/standings'));
+      const sb = await nbaFetch('site/v2/sports/basketball/nba/scoreboard?dates=' + nbaDate.replace(/-/g, ''));
+      const games = (sb.events || []).map(e => ({e, c: e.competitions[0]})).sort((a, b) => {
+        const fav = g => g.c.competitors.some(t => isFav(t.team.abbreviation)) ? 0 : 1;
+        return fav(a) - fav(b) || a.e.date.localeCompare(b.e.date);
+      });
+      $('nbaGames').replaceChildren(...(games.length ? games.map(nbaCard) : [el('div', 'hint', 'Aucun match cette nuit-là.')]));
+      if (games.some(g => g.e.status.type.state === 'in')) nbaTimer = setTimeout(nbaRender, 30000);  // live scores
+    } catch (err) { $(nbaView === 'playoffs' ? 'nbaPlayoffs' : nbaView === 'standings' ? 'nbaStandings' : 'nbaGames').replaceChildren(el('div', 'hint', 'Données indisponibles : ' + err.message + '. Vérifie ta connexion.')); }
+  }
+  function nbaCard({e, c}) {
+    const st = e.status.type, card = el('div', 'sysCard px nbaGame'), teams = [...c.competitors].sort((a, b) => a.homeAway === 'away' ? -1 : 1);
+    if (teams.some(t => isFav(t.team.abbreviation))) card.classList.add('fav');
+    for (const t of teams) {
+      const r = el('div', 'nbaTeam' + (st.state === 'post' && !t.winner ? ' lost' : '')), logo = el('img'), n = el('div', 'tn');
+      logo.src = t.team.logo || ''; logo.onerror = () => logo.style.visibility = 'hidden';
+      n.append(t.team.shortDisplayName || t.team.displayName, el('small', '', (t.homeAway === 'home' ? 'domicile' : 'extérieur') + (t.records?.[0]?.summary ? ' · ' + t.records[0].summary : '')));
+      n.classList.add('nbaTn'); n.title = 'Voir les matchs de cette équipe'; n.onclick = ev => { ev.stopPropagation(); nbaTeam(t.team.abbreviation, () => nbaClose()); };
+      r.append(logo, n, nbaStar(t.team.abbreviation), el('span', 'nbaScore', st.state === 'pre' ? '' : t.score));
+      card.append(r);
+    }
+    const live = st.state === 'in', s = el('div', 'nbaStatus' + (live ? ' live' : ''));
+    s.textContent = st.name === 'STATUS_POSTPONED' ? 'Reporté' : st.state === 'pre' ? 'à ' + new Date(e.date).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'}) + ' (heure de Paris)'
+      : live ? 'EN DIRECT · ' + nbaFr(st.shortDetail) : nbaFr(st.shortDetail);
+    card.append(s);
+    // best scorer of each team, once the game has started
+    const tops = st.state === 'pre' ? [] : teams.map(t => t.leaders?.find(l => l.name === 'points')?.leaders?.[0]).filter(Boolean);
+    if (tops.length) {  // the best scorers: a click opens the player
+      const h = el('div', 'hint', 'Meilleurs marqueurs : ');
+      tops.forEach((l, i) => { const b = el('button', 'nbaPl', l.athlete.shortName + ' ' + l.displayValue + ' pts'); b.onclick = ev => { ev.stopPropagation(); nbaPlayer(l.athlete.id, () => nbaClose()); }; h.append(i ? ' · ' : '', b); });
+      card.append(h);
+    }
+    card.classList.add('click'); card.title = 'Voir la feuille de match et les stats avancées'; card.onclick = () => nbaGame(e.id);
+    return card;
+  }
+  // la page d'une équipe : ses prochains matchs et ses derniers résultats (un clic ouvre le match)
+  const nbaSchedule = abbr => nbaFetch('site/v2/sports/basketball/nba/teams/' + abbr.toLowerCase() + '/schedule');
+  const nbaSide = (e, abbr) => { const cs = e.competitions?.[0]?.competitors || []; return {me: cs.find(c => c.team.abbreviation === abbr), op: cs.find(c => c.team.abbreviation !== abbr)}; };
+  async function nbaTeam(abbr, back) {
+    nbaLoading('des matchs');
+    let j; try { j = await nbaSchedule(abbr); } catch (err) { return nbaDetail([el('div', 'hint', 'Matchs indisponibles : ' + err.message)], back); }
+    const evs = j.events || [], done = e => e.competitions?.[0]?.status?.type?.completed;
+    const past = evs.filter(done).reverse().slice(0, 12), next = evs.filter(e => !done(e)).slice(0, 12);
+    const row = e => {
+      const {me, op} = nbaSide(e, abbr), d = new Date(e.date), r = el('div', 'nbaSch'), logo = el('img');
+      logo.src = op?.team.logos?.[0]?.href || ''; logo.onerror = () => logo.style.visibility = 'hidden';
+      r.append(el('span', '', d.toLocaleDateString('fr-FR', {weekday: 'short', day: 'numeric', month: 'short'})), logo, el('span', '', (me?.homeAway === 'home' ? 'contre ' : 'à ') + (op?.team.displayName || '?')));
+      if (done(e)) { const w = me?.winner, b = el('b', w ? 'w' : 'l', (w ? 'V ' : 'D ') + (me?.score?.displayValue ?? '') + '-' + (op?.score?.displayValue ?? '')); r.append(b); }
+      else r.append(el('span', '', d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})));
+      r.title = 'Voir ce match'; r.onclick = () => nbaGame(e.id);
+      return r;
+    };
+    const head = el('div', 'sysCard px'), h = el('div', 'nbaHead'), logo = el('img');
+    logo.src = j.team?.logo || ''; logo.onerror = () => logo.style.visibility = 'hidden';
+    h.append(logo, el('div', 'nbaName', j.team?.displayName || abbr), nbaStar(abbr)); head.append(h, el('div', 'hint', j.team?.recordSummary ? 'Bilan ' + j.team.recordSummary + (j.team.standingSummary ? ' · ' + j.team.standingSummary : '') : ''));
+    const card = (t, list) => { const c = el('div', 'sysCard px'); c.append(el('span', 'label', t), ...(list.length ? list.map(row) : [el('div', 'hint', 'Aucun.')])); return c; };
+    nbaDetail([head, card('Prochains matchs', next), card('Derniers résultats', past)], back);
+  }
+  function nbaStandings(st) {
+    $('nbaStandings').replaceChildren(...(st.children || []).map(conf => {
+      const card = el('div', 'sysCard px'), stat = (en, k) => en.stats.find(s => s.name === k)?.displayValue ?? '';
+      card.append(el('span', 'label', conf.name === 'Eastern Conference' ? 'Conférence Est' : conf.name === 'Western Conference' ? 'Conférence Ouest' : conf.name));
+      const rows = [...conf.standings.entries].sort((a, b) => +stat(a, 'playoffSeed') - +stat(b, 'playoffSeed'));
+      const head = el('div', 'nbaRow head'); head.append(el('span', '', '#'), el('span', '', ''), el('span', '', 'Équipe'), el('span', '', 'V-D'), el('span', '', '%'), el('span', '', 'Écart'), el('span', '', 'Série'));
+      card.append(head);
+      rows.forEach((en, i) => {
+        const r = el('div', 'nbaRow' + (isFav(en.team.abbreviation) ? ' fav' : '') + (i === 6 || i === 10 ? ' cut' : '')), logo = el('img');
+        logo.src = en.team.logos?.[0]?.href || ''; logo.onerror = () => logo.style.visibility = 'hidden';
+        const name = el('span', 'tn', en.team.shortDisplayName || en.team.displayName);
+        name.append(nbaStar(en.team.abbreviation)); name.classList.add('nbaTn'); name.title = 'Voir les matchs de cette équipe'; name.onclick = () => nbaTeam(en.team.abbreviation, () => nbaClose());
+        r.append(el('span', '', i + 1), logo, name, el('span', '', stat(en, 'wins') + '-' + stat(en, 'losses')), el('span', '', stat(en, 'winPercent')), el('span', '', stat(en, 'gamesBehind')), el('span', '', stat(en, 'streak')));
+        r.title = i < 6 ? 'Qualifiée pour les playoffs' : i < 10 ? 'Play-in' : '';
+        card.append(r);
+      });
+      card.append(el('div', 'hint', '1 à 6 : playoffs · 7 à 10 : play-in'));
+      return card;
+    }));
+  }
+  $('nbaPrev').onclick = () => { nbaDate = ymd(addDays(new Date(nbaDate + 'T12:00'), -1)); nbaRender(); };
+  $('nbaNext').onclick = () => { nbaDate = ymd(addDays(new Date(nbaDate + 'T12:00'), 1)); nbaRender(); };
+  $('nbaToday').onclick = () => { nbaDate = nbaDefault(); nbaRender(); };
+  $('nbaTabs').onclick = e => { const v = e.target.dataset.v; if (v) { nbaView = v; nbaBack = null; $('nbaDetail').style.display = 'none'; nbaRender(); } };
+  // ---- les matchs de tes équipes dans ton emploi du temps ----
+  const hm = mn => String(Math.floor(mn / 60)).padStart(2, '0') + ':' + String(mn % 60).padStart(2, '0');
+  async function nbaCalendar() {
+    const evs = new Map();
+    if (prefs.nbaCalendar !== false) for (const abbr of favs()) {
+      try {
+        const j = await nbaFetch('site/v2/sports/basketball/nba/teams/' + abbr.toLowerCase() + '/schedule');
+        for (const e of j.events || []) {
+          const d = new Date(e.date); if (d < new Date(Date.now() - 36e5) || d > new Date(Date.now() + 75 * 864e5)) continue;
+          const cs = e.competitions?.[0]?.competitors || [], home = cs.find(c => c.homeAway === 'home')?.team, away = cs.find(c => c.homeAway === 'away')?.team, s = d.getHours() * 60 + d.getMinutes();
+          evs.set(e.id, {id: 'nba:' + e.id, kind: 'event', title: 'NBA · ' + (away?.displayName || '?') + ' à ' + (home?.displayName || '?'), date: ymd(d), start: hm(s), end: hm(Math.min(1439, s + 150)), allDay: false, color: '#e89a3a', place: 'Match NBA'});
+        }
+      } catch {}
+    }
+    ctx.host.agenda?.sync('nba', [...evs.values()].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)));
+  }
+  $('nbaCal').checked = prefs.nbaCalendar !== false;
+  $('nbaCal').onchange = async () => { prefs = await neo.setSettings({nbaCalendar: $('nbaCal').checked}); nbaCalendar(); ctx.host.toast(prefs.nbaCalendar ? 'Les matchs de tes équipes sont dans ton emploi du temps' : 'Les matchs ne sont plus dans ton emploi du temps'); };
+  nbaCalendar(); const calTimer = setInterval(nbaCalendar, 3 * 3600e3);
+  const seen = new Set(prefs.nbaNotified || []);
+  const nbaNotifs = (evs, abbr, now) => evs.flatMap(e => {  // ce qu'il faut annoncer : un match qui commence dans l'heure, un match terminé depuis moins de 6 h
+    const st = e.competitions?.[0]?.status?.type || {}, t = new Date(e.date).getTime(), {me, op} = nbaSide(e, abbr), vs = (me?.homeAway === 'home' ? 'contre ' : 'à ') + (op?.team.displayName || '?');
+    if (!st.completed && t > now && t - now <= 36e5) return [{key: 'm' + e.id, type: 'match', title: 'Match dans ' + Math.max(1, Math.round((t - now) / 6e4)) + ' min · ' + (me?.team.displayName || abbr), body: vs + ' à ' + new Date(t).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}];
+    if (st.completed && now - t < 6 * 36e5) return [{key: 'r' + e.id, type: 'resultat', title: (me?.winner ? 'Victoire' : 'Défaite') + ' · ' + (me?.team.displayName || abbr), body: (me?.score?.displayValue ?? '') + '-' + (op?.score?.displayValue ?? '') + ' ' + vs}];
+    return [];
+  });
+  console.assert(nbaNotifs([{id: '1', date: new Date(9e5).toISOString(), competitions: [{status: {type: {}}, competitors: [{team: {abbreviation: 'BOS', displayName: 'Boston'}, homeAway: 'home'}, {team: {abbreviation: 'NY', displayName: 'New York'}}]}]}], 'BOS', 0)[0]?.key === 'm1', 'nbaNotifs');
+  async function nbaNotify() {
+    if (prefs.nbaNotify === false || !ctx.notifications) return;
+    for (const abbr of favs()) {
+      try {
+        for (const n of nbaNotifs((await nbaSchedule(abbr)).events || [], abbr, Date.now())) {
+          if (seen.has(n.key)) continue;
+          seen.add(n.key); ctx.notifications.send({type: n.type, title: n.title, body: n.body, open: 'plugin:neodex.nba'}).catch(() => {});
+        }
+      } catch {}
+    }
+    prefs = await neo.setSettings({nbaNotified: [...seen].slice(-60)});
+  }
+  nbaNotify(); const notifTimer = setInterval(nbaNotify, 15 * 6e4);
+  // ---- fin ----
+  view.__nba = {card: nbaCard, playoffs: nbaPlayoffs, compare: nbaCompare, videos: nbaVideos, show: v => { nbaView = v; nbaBack = null; $('nbaDetail').style.display = 'none'; nbaShow(v); view.querySelectorAll('#nbaTabs .btn').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }, close: () => { nbaBack = null; $('nbaDetail').style.display = 'none'; }};  // pour l'auto-test
+  ctx.onOpen(() => { nbaRender(); });
+  ctx.onClose(() => { clearTimeout(nbaTimer); clearInterval(calTimer); clearInterval(notifTimer); });
+}

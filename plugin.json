@@ -1,0 +1,43 @@
+{
+  "id": "neodex.nba",
+  "name": "NBA",
+  "version": "1.0.0",
+  "author": "NDesumeur",
+  "description": "Les matchs NBA de chaque nuit aux heures de Paris avec scores en direct, feuilles de match (quart-temps, stats des équipes et des joueurs, stats avancées eFG %, TS %, rythme), classement Est et Ouest avec playoffs et play-in, page de chaque équipe et fiches joueurs. Étoile sur tes équipes : leurs matchs en premier, dans ton emploi du temps et notifiés (début et score final). Données ESPN. Cartes de match plus grandes et largeur selon l'écran ; comparer deux joueurs côte à côte (moyennes de la saison) ; onglet Playoffs avec le tableau tiré du classement du moment ; moments forts du match avec les liens vers les vidéos.",
+  "icon": "icon.png",
+  "entry": "index.js",
+  "view": "nba",
+  "neobase": ">=4.0.0",
+  "type": "app",
+  "category": "Sport",
+  "compatibility": [
+    "android"
+  ],
+  "syncMode": "fusion",
+  "syncInfo": "Équipe favorite, notifications choisies.",
+  "mobile": true,
+  "system": false,
+  "dependencies": {},
+  "autoload": true,
+  "sdk": "2.1.0",
+  "permissions": [
+    "storage",
+    "agenda",
+    "background",
+    "network:a.espncdn.com",
+    "network:espnmedia-cdn.akamaized.net",
+    "network:site.api.espn.com",
+    "network:site.web.api.espn.com",
+    "notifications"
+  ],
+  "notifications": [
+    {
+      "type": "match",
+      "description": "Un match d'une de tes équipes commence dans l'heure."
+    },
+    {
+      "type": "resultat",
+      "description": "Le score final d'un match d'une de tes équipes."
+    }
+  ]
+}
